@@ -1,0 +1,4 @@
+interface:
+  display_name: "Snippet Browser Bridge"
+  short_description: "Operate Snippet through its Codex browser bridge"
+  default_prompt: "Use the Snippet browser bridge to read state first, operate allowed room/canvas/workbench commands, and verify the result."
