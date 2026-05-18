@@ -33,12 +33,20 @@ const workbench = window.__snippetCodexWorkbench.readState()
 window.__snippetCodexCanvas.searchObjects({ query: "topic" })
 window.__snippetCodexCanvas.getObject(objectId)
 window.__snippetCodexWorkbench.listChangedObjects()
+window.__snippetCodexWorkbench.readDraftReview()
 window.__snippetCodexWorkbench.listCommits()
 ```
 
-5. Decide from room memory and state, not visual guessing.
-6. Run only the needed command.
-7. Read memory/state again and verify the result.
+5. For creator workflow tasks, build or inspect the shared selection set before committing:
+
+```js
+window.__snippetCodexWorkbench.selectObjectsByFilter({ query: "topic", changedOnly: true })
+window.__snippetCodexWorkbench.setCommitTargets(objectIds)
+```
+
+6. Decide from room memory, draft review, and state, not visual guessing.
+7. Run only the needed command.
+8. Read memory/state again and verify the result.
 
 ## Canvas Surface
 
@@ -97,19 +105,36 @@ Available commands:
 ```js
 readState()
 listChangedObjects()
+readDraftReview()
 listCommits()
 setPublicShare(isPublic)
 createCommit({ name, message, objectIds })
 setCommitTargets(objectIds)
+selectObjectsByFilter({ query, type, labels, containingFrameId, changedOnly, limit })
 openPanel(kind)
 openTimeline()
 selectCommit(commitId)
 returnToCurrent()
 ```
 
-Workbench state includes room/share/permission/current-or-past/timeline/commit target/loading/error information.
+Workbench state includes room/share/permission/current-or-past/timeline/selection/commit target/loading/error information.
 
-`listChangedObjects()` returns readable summaries for uncommitted changed objects and whether each object is currently a commit target.
+`listChangedObjects()` returns readable summaries for uncommitted changed objects, high-level `changeTypes`, and whether each object is currently a commit target.
+
+`readDraftReview()` returns a reviewable creator workflow summary:
+
+```js
+{
+  changedObjects,
+  selectedObjectIds,
+  commitTargetIds,
+  changeTypeCounts
+}
+```
+
+Use `readDraftReview()` before creating commits so the commit target is intentional.
+
+`selectObjectsByFilter(...)` builds the shared selection set from readable room objects. Use it when a task asks to find, organize, or commit a class of objects by keyword, type, labels, frame, or changed state.
 
 `listCommits()` returns commit rows with id, name, message, createdAt, objectIds, object count, and readable object previews when available.
 
@@ -133,10 +158,11 @@ const index = window.__snippetCodexCanvas.readRoomIndex()
 const matches = window.__snippetCodexCanvas.searchObjects({ query: "keyword", limit: 10 })
 const detail = matches[0] ? window.__snippetCodexCanvas.getObject(matches[0].id) : null
 const changed = window.__snippetCodexWorkbench.listChangedObjects()
+const draft = window.__snippetCodexWorkbench.readDraftReview()
 const commits = window.__snippetCodexWorkbench.listCommits()
 ```
 
-Use `listObjects({ type })` or `listObjects({ labels })` when the user asks for a class of room objects. Use `getObject(id)` before editing a specific object so you understand its current content.
+Use `listObjects({ type })` or `listObjects({ labels })` when the user asks for a class of room objects. Use `getObject(id)` before editing a specific object so you understand its current content. Use `readDraftReview()` before committing changed objects.
 
 ## Common Operations
 
@@ -177,12 +203,24 @@ await window.__snippetCodexCanvas.createRelationship({
 Commit changes:
 
 ```js
+const review = window.__snippetCodexWorkbench.readDraftReview()
 await window.__snippetCodexWorkbench.setCommitTargets(objectIds)
 await window.__snippetCodexWorkbench.createCommit({
   name: 'Update',
   message: 'Organized through Codex',
   objectIds
 })
+```
+
+Find and select changed objects:
+
+```js
+const selectedIds = window.__snippetCodexWorkbench.selectObjectsByFilter({
+  query: 'research',
+  changedOnly: true,
+  limit: 20
+})
+const review = window.__snippetCodexWorkbench.readDraftReview()
 ```
 
 ## Fallback
