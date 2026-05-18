@@ -19,16 +19,26 @@ Boolean(window.__snippetCodexCanvas)
 Boolean(window.__snippetCodexWorkbench)
 ```
 
-3. Read state first:
+3. Read room memory first, then operational state:
 
 ```js
+const index = window.__snippetCodexCanvas.readRoomIndex()
 const canvas = window.__snippetCodexCanvas.readState()
 const workbench = window.__snippetCodexWorkbench.readState()
 ```
 
-4. Decide from state, not visual guessing.
-5. Run only the needed command.
-6. Read state again and verify the result.
+4. For a new or unfamiliar room, investigate before acting:
+
+```js
+window.__snippetCodexCanvas.searchObjects({ query: "topic" })
+window.__snippetCodexCanvas.getObject(objectId)
+window.__snippetCodexWorkbench.listChangedObjects()
+window.__snippetCodexWorkbench.listCommits()
+```
+
+5. Decide from room memory and state, not visual guessing.
+6. Run only the needed command.
+7. Read memory/state again and verify the result.
 
 ## Canvas Surface
 
@@ -38,6 +48,10 @@ Available commands:
 
 ```js
 readState()
+readRoomIndex()
+listObjects(filter)
+getObject(objectId)
+searchObjects({ query, type, labels, containingFrameId, visibleOnly, limit })
 selectObjects(ids)
 createObjects(inputs)
 updateObjects(updates)
@@ -65,6 +79,15 @@ State includes:
 
 Object rows include stable `id`, `type`, `contentData`, `contentText`, `position`, `size`, `visible`, and `containingFrameId`.
 
+Room memory commands:
+
+- `readRoomIndex()` returns room identity, read-only/current-or-past state, object counts, type counts, frames, object previews, and relationships.
+- `listObjects(filter)` returns readable object rows with `id`, `type`, `title`, `previewText`, `searchableText`, `labels`, placement, frame membership, relationships, timestamps, `visible`, and `readable`.
+- `getObject(objectId)` returns one readable object row or `null`.
+- `searchObjects(...)` searches readable object title, preview text, searchable text, labels, URL, description, and type-specific readable metadata.
+
+Use room memory commands instead of inferring meaning from the canvas image.
+
 ## Workbench Surface
 
 Use `window.__snippetCodexWorkbench`.
@@ -73,6 +96,8 @@ Available commands:
 
 ```js
 readState()
+listChangedObjects()
+listCommits()
 setPublicShare(isPublic)
 createCommit({ name, message, objectIds })
 setCommitTargets(objectIds)
@@ -84,6 +109,10 @@ returnToCurrent()
 
 Workbench state includes room/share/permission/current-or-past/timeline/commit target/loading/error information.
 
+`listChangedObjects()` returns readable summaries for uncommitted changed objects and whether each object is currently a commit target.
+
+`listCommits()` returns commit rows with id, name, message, createdAt, objectIds, object count, and readable object previews when available.
+
 ## Safety Rules
 
 - If `canvas.readOnly` is true, do not call mutation commands.
@@ -92,6 +121,22 @@ Workbench state includes room/share/permission/current-or-past/timeline/commit t
 - Do not change public share state unless the user asked for sharing/publication or it is required by the task.
 - Do not use coordinate dragging when `arrangeObjects` or `updateObjects` can express the operation.
 - Do not treat hidden or invisible objects as editable targets unless the user explicitly asks to investigate visibility.
+- Do not assume missing search results mean an external fact is false; they only mean the current room memory did not expose a readable match.
+- Do not claim to have read private, hidden, paid, or file-body content unless the bridge returned it.
+
+## Room Investigation
+
+For a fresh room, use this sequence:
+
+```js
+const index = window.__snippetCodexCanvas.readRoomIndex()
+const matches = window.__snippetCodexCanvas.searchObjects({ query: "keyword", limit: 10 })
+const detail = matches[0] ? window.__snippetCodexCanvas.getObject(matches[0].id) : null
+const changed = window.__snippetCodexWorkbench.listChangedObjects()
+const commits = window.__snippetCodexWorkbench.listCommits()
+```
+
+Use `listObjects({ type })` or `listObjects({ labels })` when the user asks for a class of room objects. Use `getObject(id)` before editing a specific object so you understand its current content.
 
 ## Common Operations
 
