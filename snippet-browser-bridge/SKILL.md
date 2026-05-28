@@ -1,13 +1,17 @@
 ---
 name: snippet-browser-bridge
-description: Operate the Snippet app through its browser-exposed Codex bridge. Use when the user asks Codex to inspect, organize, edit, arrange, connect, commit, share, or verify a Snippet room/canvas/workbench in the in-app browser or through Playwright/browser automation. This skill is for Snippet-specific browser bridge operation, not MCP/server-side tool design.
+description: Operate Snippet rooms through the browser-exposed Codex bridge. Use when Codex needs to inspect, organize, edit, style, arrange, connect, commit, share, or verify a Snippet room in the in-app browser or Playwright. This skill is for Snippet-specific room/canvas/workbench operation, not MCP/server-side tool design.
 ---
 
 # Snippet Browser Bridge
 
 ## Goal
 
-Use Snippet's browser bridge as the primary operation path when it exists. Use ordinary browser clicks only for navigation, visual confirmation, or UI that is not exposed by the bridge.
+Use Snippet's browser bridge as the primary operation path whenever it exists.
+
+The current Snippet editor is a 2D room canvas with a left tool rail, a center object canvas, a right inspector, and a bottom commit timeline. Do not assume a 3D scene, WebGL renderer, camera orbit, raycast picking, or 3D transform workflow. `position.z` still exists as ordering/depth data, but ordinary editing should treat objects as 2D canvas objects with stable ids, content, appearance, position, size, visibility, relationships, and commit state.
+
+Use ordinary browser clicks only for navigation, visual confirmation, or UI that is not exposed by the bridge.
 
 ## Required Order
 
@@ -30,18 +34,20 @@ const workbench = window.__snippetCodexWorkbench.readState()
 4. For a new or unfamiliar room, investigate before acting:
 
 ```js
-window.__snippetCodexCanvas.searchObjects({ query: "topic" })
+window.__snippetCodexCanvas.listObjects({ visibleOnly: true, limit: 50 })
+window.__snippetCodexCanvas.searchObjects({ query: "topic", limit: 10 })
 window.__snippetCodexCanvas.getObject(objectId)
 window.__snippetCodexWorkbench.listChangedObjects()
 window.__snippetCodexWorkbench.readDraftReview()
 window.__snippetCodexWorkbench.listCommits()
 ```
 
-5. For creator workflow tasks, build or inspect the shared selection set before committing:
+5. For creator workflow tasks, build or inspect the shared selection and commit target set before committing:
 
 ```js
-window.__snippetCodexWorkbench.selectObjectsByFilter({ query: "topic", changedOnly: true })
-window.__snippetCodexWorkbench.setCommitTargets(objectIds)
+const selectedIds = window.__snippetCodexWorkbench.selectObjectsByFilter({ query: "topic", changedOnly: true })
+const draft = window.__snippetCodexWorkbench.readDraftReview()
+window.__snippetCodexWorkbench.setCommitTargets(selectedIds)
 ```
 
 6. Decide from room memory, draft review, and state, not visual guessing.
@@ -64,6 +70,10 @@ selectObjects(ids)
 createObjects(inputs)
 updateObjects(updates)
 arrangeObjects(input)
+updateCanvasBackground(input)
+updateObjectDefaultAppearance(input)
+updateObjectAppearance({ objectId, appearance })
+createReusableStyleToken({ objectId, name })
 deleteObjects(ids)
 createRelationship({ fromObjectId, toObjectId, label })
 deleteRelationship(relationshipId)
@@ -78,23 +88,142 @@ State includes:
   viewingCommitId,
   userRole,
   hasEditPermission,
+  appearance,
+  selectedObjectId,
   selectedObjectIds,
+  selectedObjectLinkId,
   viewState,
   objects,
   relationships
 }
 ```
 
-Object rows include stable `id`, `type`, `contentData`, `contentText`, `position`, `size`, `visible`, and `containingFrameId`.
+Object rows include stable `id`, `type`, `contentData`, `contentText`, `appearance`, `position`, `size`, `labels`, `isMainContent`, `visible`, `containingFrameId`, and `updatedAt`.
 
-Room memory commands:
+Supported create/update object types:
+
+```js
+'text'
+'document'
+'sticky'
+'image'
+'video'
+'audio'
+'link'
+'shape'
+'line'
+'frame'
+'sketch'
+```
+
+Create input:
+
+```js
+{
+  type,
+  contentData,
+  position: { x, y, z },
+  size: { width, height },
+  labels,
+  isMainContent
+}
+```
+
+Update input:
+
+```js
+{
+  id,
+  contentData,
+  appearance,
+  position: { x, y, z },
+  size: { width, height },
+  labels,
+  isMainContent
+}
+```
+
+Arrange input:
+
+```js
+{
+  ids,
+  layout: 'row' | 'column' | 'grid',
+  start: { x, y, z },
+  gap: { x, y }
+}
+```
+
+## Room Memory
 
 - `readRoomIndex()` returns room identity, read-only/current-or-past state, object counts, type counts, frames, object previews, and relationships.
 - `listObjects(filter)` returns readable object rows with `id`, `type`, `title`, `previewText`, `searchableText`, `labels`, placement, frame membership, relationships, timestamps, `visible`, and `readable`.
 - `getObject(objectId)` returns one readable object row or `null`.
-- `searchObjects(...)` searches readable object title, preview text, searchable text, labels, URL, description, and type-specific readable metadata.
+- `searchObjects(...)` searches readable title, preview text, searchable text, labels, URL, description, and type-specific readable metadata.
 
-Use room memory commands instead of inferring meaning from the canvas image.
+Use room memory commands instead of inferring meaning from the canvas image. Use browser screenshots only to confirm layout, overlap, readability, or user-visible presentation.
+
+## Appearance
+
+R3.1 exposes room and object style state through `canvas.appearance` and appearance commands.
+
+Canvas background:
+
+```js
+await window.__snippetCodexCanvas.updateCanvasBackground({
+  color: '#EEF6F1',
+  gridMode: 'none' | 'dots' | 'grid',
+  paperStrength: 0.45,
+  gridOpacity: 0.12
+})
+```
+
+Do not expose or rely on dot/grid size as a normal user choice. The UI treats pattern size as fixed and exposes pattern mode plus overall strength.
+
+Object default appearance:
+
+```js
+await window.__snippetCodexCanvas.updateObjectDefaultAppearance({
+  surface: { color: '#eef6f1', opacity: 0.96, strength: 'soft' }
+})
+```
+
+Per-object appearance:
+
+```js
+await window.__snippetCodexCanvas.updateObjectAppearance({
+  objectId,
+  appearance: {
+    surface: { color: '#fef3c7', opacity: 0.96, strength: 'soft' },
+    border: { width: 1, style: 'solid', visible: true },
+    radius: 8,
+    density: 'normal',
+    typography: { scale: 'normal' },
+    accent: { color: '#0f766e', placement: 'left' }
+  }
+})
+```
+
+Reusable style token:
+
+```js
+const token = await window.__snippetCodexCanvas.createReusableStyleToken({
+  objectId,
+  name: 'Research card'
+})
+await window.__snippetCodexCanvas.updateObjectAppearance({
+  objectId: otherObjectId,
+  appearance: { tokenId: token.id }
+})
+```
+
+When changing style, verify both state and visible result:
+
+```js
+const state = window.__snippetCodexCanvas.readState()
+state.appearance
+state.objects.find((object) => object.id === objectId)?.appearance
+```
 
 ## Workbench Surface
 
@@ -144,37 +273,52 @@ Use `readDraftReview()` before creating commits so the commit target is intentio
 - If `canvas.hasEditPermission` is false, do not call mutation commands.
 - If `workbench.hasEditPermission` is false, do not create commits.
 - Do not change public share state unless the user asked for sharing/publication or it is required by the task.
-- Do not use coordinate dragging when `arrangeObjects` or `updateObjects` can express the operation.
+- Do not use coordinate dragging when `arrangeObjects`, `updateObjects`, or appearance commands can express the operation.
 - Do not treat hidden or invisible objects as editable targets unless the user explicitly asks to investigate visibility.
 - Do not assume missing search results mean an external fact is false; they only mean the current room memory did not expose a readable match.
 - Do not claim to have read private, hidden, paid, or file-body content unless the bridge returned it.
+- Do not bypass permission, visibility, pricing, commit, or viewer boundaries with direct backend calls while operating a room through the browser bridge.
 
-## Room Investigation
+## Common Operations
 
-For a fresh room, use this sequence:
+Investigate a room:
 
 ```js
 const index = window.__snippetCodexCanvas.readRoomIndex()
-const matches = window.__snippetCodexCanvas.searchObjects({ query: "keyword", limit: 10 })
-const detail = matches[0] ? window.__snippetCodexCanvas.getObject(matches[0].id) : null
+const objects = window.__snippetCodexCanvas.listObjects({ visibleOnly: true, limit: 50 })
 const changed = window.__snippetCodexWorkbench.listChangedObjects()
 const draft = window.__snippetCodexWorkbench.readDraftReview()
 const commits = window.__snippetCodexWorkbench.listCommits()
 ```
 
-Use `listObjects({ type })` or `listObjects({ labels })` when the user asks for a class of room objects. Use `getObject(id)` before editing a specific object so you understand its current content. Use `readDraftReview()` before committing changed objects.
-
-## Common Operations
-
 Create objects:
 
 ```js
-await window.__snippetCodexCanvas.createObjects([
+const ids = await window.__snippetCodexCanvas.createObjects([
   {
     type: 'sticky',
     contentData: { text: 'Idea' },
     position: { x: 200, y: 160, z: 1 },
     size: { width: 180, height: 140 }
+  },
+  {
+    type: 'document',
+    contentData: { title: 'Research brief', content: 'Context\\nEvidence\\nDecision' },
+    position: { x: 420, y: 160, z: 1 },
+    size: { width: 320, height: 220 }
+  }
+])
+```
+
+Update content and placement:
+
+```js
+await window.__snippetCodexCanvas.updateObjects([
+  {
+    id: ids[0],
+    contentData: { text: 'Refined idea' },
+    position: { x: 240, y: 180 },
+    size: { width: 220, height: 150 }
   }
 ])
 ```
@@ -193,10 +337,22 @@ await window.__snippetCodexCanvas.arrangeObjects({
 Connect objects:
 
 ```js
-await window.__snippetCodexCanvas.createRelationship({
+const relationshipId = await window.__snippetCodexCanvas.createRelationship({
   fromObjectId,
   toObjectId,
   label: 'supports'
+})
+```
+
+Style objects:
+
+```js
+await window.__snippetCodexCanvas.updateObjectAppearance({
+  objectId,
+  appearance: {
+    surface: { color: '#eef6f1', opacity: 0.96, strength: 'soft' },
+    accent: { color: '#0f766e', placement: 'left' }
+  }
 })
 ```
 
@@ -222,6 +378,16 @@ const selectedIds = window.__snippetCodexWorkbench.selectObjectsByFilter({
 })
 const review = window.__snippetCodexWorkbench.readDraftReview()
 ```
+
+## Visual Confirmation
+
+Use screenshots or DOM checks after bridge operations when the user cares about layout or UI quality. Confirm:
+
+- objects are visible and not unintentionally overlapping
+- selected object and right inspector agree
+- canvas appearance matches the requested background/pattern/style
+- viewer and past commit modes remain read-only
+- hidden or unreadable objects are not exposed
 
 ## Fallback
 
