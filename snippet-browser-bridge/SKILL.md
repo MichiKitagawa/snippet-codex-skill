@@ -89,6 +89,7 @@ State includes:
   userRole,
   hasEditPermission,
   appearance,
+  objectPresets,
   selectedObjectId,
   selectedObjectIds,
   selectedObjectLinkId,
@@ -98,7 +99,7 @@ State includes:
 }
 ```
 
-Object rows include stable `id`, `type`, `contentData`, `contentText`, `appearance`, `position`, `size`, `labels`, `isMainContent`, `visible`, `containingFrameId`, and `updatedAt`.
+Object rows include stable `id`, `type`, `contentData`, `contentText`, `appearance`, `position`, `size`, `labels`, `isMainContent`, `visible`, `containingFrameId`, and `updatedAt`. In R3.2, `appearance.presetId` identifies the Object Preset used by that object when one is set.
 
 Supported create/update object types:
 
@@ -122,6 +123,7 @@ Create input:
 {
   type,
   contentData,
+  presetId,
   position: { x, y, z },
   size: { width, height },
   labels,
@@ -135,6 +137,7 @@ Update input:
 {
   id,
   contentData,
+  presetId,
   appearance,
   position: { x, y, z },
   size: { width, height },
@@ -165,7 +168,51 @@ Use room memory commands instead of inferring meaning from the canvas image. Use
 
 ## Appearance
 
-R3.1 exposes room and object style state through `canvas.appearance` and appearance commands.
+R3.2 exposes room style, Object Presets, and object style state through `canvas.appearance`, `canvas.objectPresets`, object `appearance.presetId`, and appearance commands.
+
+Object Presets are renderer families for the same Snippet Object structure. They are not skins, purpose categories, room templates, or minor token changes. Choosing a preset should preserve the same Object types, count, content, position, relationships, permissions, commit behavior, and viewer/read-only boundaries while changing the object rendering genre.
+
+Official R3.2 Object Presets:
+
+```js
+'modern-saas'
+'neo-brutalism'
+'glassmorphism'
+'pixel-retro'
+'holographic'
+```
+
+Use the product names returned by `canvas.objectPresets` when showing or reporting them. `modern-saas` is the existing baseline. Do not rename presets as task outcomes such as brainstorming, research, command board, or gallery.
+
+Set an Object Preset when creating or updating objects:
+
+```js
+const ids = await window.__snippetCodexCanvas.createObjects([
+  {
+    type: 'document',
+    presetId: 'glassmorphism',
+    contentData: { title: 'Research brief', content: 'Context\\nEvidence\\nDecision' },
+    position: { x: 420, y: 160, z: 1 },
+    size: { width: 320, height: 220 }
+  }
+])
+
+await window.__snippetCodexCanvas.updateObjects([
+  { id: ids[0], presetId: 'neo-brutalism' }
+])
+```
+
+Per-object appearance overrides still apply on top of the selected preset. `updateObjectAppearance` changes overrides or style tokens; it should not be used as a substitute for preset selection when the task is to change renderer family.
+
+When verifying Object Presets, create or inspect all 11 toolbar Object types: `text`, `document`, `sticky`, `image`, `video`, `audio`, `link`, `shape`, `line`, `sketch`, `frame`. Do not judge a preset from only card-like objects. Type-specific expectations matter:
+
+- `image`, `video`, and `audio` must render as media objects, not text cards.
+- `link` must expose URL/link affordance, not only plain text.
+- `document` must read as a document object, not a sticky note clone.
+- `sketch` is a drawable canvas surface; do not pre-fill it with decorative scribbles unless user content contains drawing data.
+- `line` is a line object; do not place it inside a card.
+- `frame` is a frame/boundary; do not render it as a content card.
+- `shape` should not inherit irrelevant text-card accents.
 
 Canvas background:
 
@@ -222,6 +269,7 @@ When changing style, verify both state and visible result:
 ```js
 const state = window.__snippetCodexCanvas.readState()
 state.appearance
+state.objectPresets
 state.objects.find((object) => object.id === objectId)?.appearance
 ```
 
@@ -356,6 +404,16 @@ await window.__snippetCodexCanvas.updateObjectAppearance({
 })
 ```
 
+Set Object Presets:
+
+```js
+await window.__snippetCodexCanvas.updateObjects([
+  { id: objectId, presetId: 'holographic' }
+])
+const state = window.__snippetCodexCanvas.readState()
+state.objects.find((object) => object.id === objectId)?.appearance?.presetId
+```
+
 Commit changes:
 
 ```js
@@ -386,6 +444,8 @@ Use screenshots or DOM checks after bridge operations when the user cares about 
 - objects are visible and not unintentionally overlapping
 - selected object and right inspector agree
 - canvas appearance matches the requested background/pattern/style
+- each Object Preset visibly changes the renderer family while preserving the same object structure
+- all 11 Object types remain type-specific under each preset
 - viewer and past commit modes remain read-only
 - hidden or unreadable objects are not exposed
 
