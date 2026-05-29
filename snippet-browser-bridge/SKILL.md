@@ -31,7 +31,7 @@ const canvas = window.__snippetCodexCanvas.readState()
 const workbench = window.__snippetCodexWorkbench.readState()
 ```
 
-4. For a new or unfamiliar room, investigate before acting:
+4. For a new or unfamiliar room, investigate before acting. For a fresh room, use this sequence:
 
 ```js
 window.__snippetCodexCanvas.listObjects({ visibleOnly: true, limit: 50 })
